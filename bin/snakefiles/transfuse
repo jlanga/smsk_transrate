@@ -1,0 +1,81 @@
+ASSEMBLIES = ",".join(
+    [config["transcriptomes"][transcriptome]["path"] for transcriptome in config["transcriptomes"]]
+)
+LEFTS = ",".join(
+    [config["samples_pe"][sample]["forward"] for sample in config["samples_pe"]]
+)
+RIGHTS = ",".join(
+    [config["samples_pe"][sample]["reverse"] for sample in config["samples_pe"]]
+)
+
+
+
+rule merge_write_command:
+    output:
+        script = protected(
+            MERGE_DIR + "run_transfuse.sh"
+        )
+    threads:
+        1 # Threads here refers to the threads that will be used in the next step
+    params:
+        transfuse_threads = config["transfuse_params"]["threads"],
+        assemblies = ASSEMBLIES,
+        lefts = LEFTS,
+        rights = RIGHTS,
+        fasta = MERGE_DIR + "merged.fa"
+    log:
+        MERGE_DIR + "write_command.log"
+    benchmark:
+        MERGE_DIR + "write_command.json"
+    shell:
+        "USER_ID=`id -u`; "
+        "GROUP_ID=`id -g` ; "
+        "echo "
+        "\"transfuse "
+            "--assemblies `pwd`/{params.assemblies} "
+            "--left `pwd`/{params.lefts} "
+            "--right `pwd`/{params.rights} "
+            "--output `pwd`/{params.fasta} "
+            "--threads {params.transfuse_threads} "
+            "--verbose ; "
+        "mv "
+            "all-assemb-assemb.fa "
+            "all-assemb-assemb.fa-1.0.aln "
+            "all-assemb-assemb.fa-1.0.clust "
+            "assemassem_scores.csv "
+            "assembly1_filtered.fa "
+            "assembly2_filtered.fa "
+            "merged_cons.fa "
+            "merged_cons_stats.txt "
+            "transrate_assembly1/ "
+            "transrate_merged_cons/ "
+            "transrate_assembly2/ "
+            "{MERGE_DIR} ; "
+        "chown -R $USER_ID:$GROUP_ID {MERGE_DIR} ; \" "
+        "> {output.script} "
+        "2> {log}"
+
+
+
+rule merge_run_command:
+    input:
+        script = MERGE_DIR + "run_transfuse.sh",
+        assemblies = [config["transcriptomes"][transcriptome]["path"] for transcriptome in config["transcriptomes"]],
+        lefts = [config["samples_pe"][sample]["forward"] for sample in config["samples_pe"]],
+        rights =  [config["samples_pe"][sample]["reverse"] for sample in config["samples_pe"]]
+    output:
+        fasta = protected(
+            MERGE_DIR + "merged.fa"
+        )
+    threads:
+        24
+    params:
+        assemblies = ASSEMBLIES,
+        lefts = LEFTS,
+        rights = RIGHTS,
+    shell:
+        "docker run "
+            "--volume `pwd`:`pwd` "
+            "--workdir `pwd` "
+            "sglim2/transfuse-v0.5.0 "
+            "bash {input.script} "

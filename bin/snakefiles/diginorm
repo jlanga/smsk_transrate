@@ -1,0 +1,329 @@
+rule diginorm_load_into_counting:
+    """
+    Build the hash table data structure from all the trimmed reads.
+    Caution!: The --help says that it can be multithreaded but it raises
+    errors!
+    """
+    input:
+        fastqs = expand(
+            QC_DIR + "{sample}.final.{pair}.fq.gz",
+            sample = SAMPLES_PE,
+            pair = PAIRS
+        )
+    output:
+        table = temp(NORM_DIR + "diginorm_table.kh"),
+        info  = temp(NORM_DIR + "diginorm_table.kh.info")
+    threads:
+        1
+    log:
+        NORM_DIR + "load_into_counting.log"
+    benchmark:
+        NORM_DIR + "load_into_counting.json"
+    params:
+        ksize= config["diginorm_params"]["ksize"],
+        max_table_size= config["diginorm_params"]["max_table_size"],
+        n_tables= config["diginorm_params"]["n_tables"]
+    shell:
+        "load-into-counting.py "
+            "--ksize {params.ksize} "
+            "--n_tables {params.n_tables} "
+            "--max-tablesize {params.max_table_size} "
+            "--no-bigcount "
+            "{output.table} "
+            "{input.fastqs} "
+        ">  {log} 2>&1"
+
+
+
+
+rule diginorm_normalize_by_median_sample_pe_pe:
+    """
+    Normalizes by median EACH FILE.
+    Therefore one loads once per file the hash table.
+    """
+    input:
+        fastq = QC_DIR + "{sample}.final.pe_pe.fq.gz",
+        table = NORM_DIR + "diginorm_table.kh"
+    output:
+        fastq = temp(NORM_DIR + "{sample}.keep.pe_pe.fq.gz")
+    threads:
+        BLOCK_THREADS # Block
+    params:
+        cutoff   = config["diginorm_params"]["cutoff"],
+        ksize    = config["diginorm_params"]["ksize"],
+        n_tables = config["diginorm_params"]["n_tables"],
+        max_table_size = config["diginorm_params"]["max_table_size"],
+        keep_fq  = "{sample}.final.pe_pe.fq.gz.keep"
+    log:
+        NORM_DIR + "normalize_by_median_{sample}.pe_pe.log"
+    benchmark:
+        NORM_DIR + "normalize_by_median_{sample}.pe_pe.json"
+    shell:
+        "normalize-by-median.py "
+            "--ksize {params.ksize} "
+            "--n_tables {params.n_tables} "
+            "--max-tablesize {params.max_table_size} "
+            "--cutoff {params.cutoff} "
+            "--paired "
+            "--loadgraph {input.table} "
+            "{input.fastq} "
+        "> {log} 2>&1 ; "
+        "pigz "
+            "--best "
+            "--stdout "
+            "{params.keep_fq} "
+        "> {output.fastq} "
+        "2>> {log} ; "
+        "rm {params.keep_fq}"
+
+
+
+rule diginorm_normalize_by_median_sample_pe_se:
+    """
+    Normalizes by median EACH FILE.
+    Therefore one loads once per file the hash table.
+    """
+    input:
+        fastq = QC_DIR + "{sample}.final.pe_se.fq.gz",
+        table = NORM_DIR + "diginorm_table.kh"
+    output:
+        fastq = temp(NORM_DIR + "{sample}.keep.pe_se.fq.gz")
+    threads:
+        BLOCK_THREADS # Block excessive RAM usage
+    params:
+        cutoff   = config["diginorm_params"]["cutoff"],
+        ksize    = config["diginorm_params"]["ksize"],
+        n_tables = config["diginorm_params"]["n_tables"],
+        max_table_size = config["diginorm_params"]["max_table_size"],
+        keep_fq  = "{sample}.final.pe_se.fq.gz.keep"
+    log:
+        NORM_DIR + "normalize_by_median_{sample}_pe_se.log"
+    benchmark:
+        NORM_DIR + "normalize_by_median_{sample}_pe_se.json"
+    shell:
+        "normalize-by-median.py "
+            "--ksize {params.ksize} "
+            "--n_tables {params.n_tables} "
+            "--max-tablesize {params.max_table_size} "
+            "--cutoff {params.cutoff} "
+            "--loadgraph {input.table} "
+            "{input.fastq} "
+        "> {log} 2>&1 ; "
+        "pigz "
+            "--best "
+            "--stdout "
+            "{params.keep_fq} "
+        "> {output.fastq} "
+        "2>> {log} ; "
+        "rm {params.keep_fq}"
+
+
+
+rule diginorm_filter_abund_sample_pair:
+    """
+    Removes erroneus k-mers.
+    """
+    input:
+        fastq = NORM_DIR + "{sample}.keep.{pair}.fq.gz",
+        table = NORM_DIR + "diginorm_table.kh"
+    output:
+        fastq = temp(NORM_DIR + "{sample}.abundfilt.{pair}.fq.gz")
+    threads:
+        BLOCK_THREADS # BLOCK
+    params:
+        abundfilt_fq = "{sample}.keep.{pair}.fq.gz.abundfilt"
+    log:
+        NORM_DIR + "filter_abund_{sample}_{pair}.log"
+    benchmark:
+        NORM_DIR + "filter_abunt_{sample}_{pair}.json"
+    shell:
+        "filter-abund.py "
+            "--variable-coverage "
+            "{input.table} "
+            "{input.fastq} "
+        "> {log} 2>&1 ; "
+        "pigz -9c "
+            "{params.abundfilt_fq} "
+        "> {output.fastq} "
+        "2>> {log} ; "
+        "rm {params.abundfilt_fq}"
+
+
+
+rule diginorm_extract_paired_reads_sample:
+    """
+    Split the filtered reads into PE and SE.
+    """
+    input:
+        fastq = NORM_DIR + "{sample}.abundfilt.pe_pe.fq.gz"
+    output:
+        fastq_pe = temp(NORM_DIR + "{sample}.final.pe_pe.fq.gz"),
+        fastq_se = temp(NORM_DIR + "{sample}.temp.pe_se.fq.gz")
+    threads:
+        1
+    params:
+        fastq_pe = "{sample}.abundfilt.pe_pe.fq.gz.pe",
+        fastq_se = "{sample}.abundfilt.pe_pe.fq.gz.se"
+    log:
+        NORM_DIR + "extract_paired_reads_{sample}.log"
+    benchmark:
+        NORM_DIR + "extract_paired_reads_{sample}.json"
+    shell:
+        "extract-paired-reads.py "
+            "{input.fastq} "
+        "> {log} 2>&1 ; "
+        "pigz -9c {params.fastq_pe} > {output.fastq_pe} ; "
+        "pigz -9c {params.fastq_se} > {output.fastq_se} ; "
+        "rm {params.fastq_pe} {params.fastq_se}"
+
+
+
+rule diginorm_merge_pe_single_reads_sample:
+    """
+    Put together the SE reads from the same sample
+    """
+    input:
+        from_norm=   NORM_DIR + "{sample}.abundfilt.pe_se.fq.gz",
+        from_paired= NORM_DIR + "{sample}.temp.pe_se.fq.gz"
+    output:
+        fastq = temp(NORM_DIR + "{sample}.final.pe_se.fq.gz")
+    threads:
+        1
+    log:
+        NORM_DIR + "merge_single_reads_{sample}.log"
+    benchmark:
+        NORM_DIR + "merge_single_reads_{sample}.json"
+    shell:
+        "cp {input.from_norm} {output.fastq} ; "
+        "pigz -dc {input.from_paired} "
+            "| pigz --best "
+        ">> {output.fastq}"
+        
+
+
+rule dignorm_get_former_se_reads_sample:
+    """
+    Move the result of diginorm_extract_paired_reads for true SE reads
+    to their final position.
+    """
+    input:
+        single= NORM_DIR + "{sample}.abundfilt.se.fq.gz"
+    output:
+        single= temp(NORM_DIR + "{sample}.final.se.fq.gz")
+    threads:
+        1
+    log:
+        NORM_DIR + "get_former_se_reads_{sample}.log"
+    benchmark:
+        NORM_DIR + "get_former_se_reads_{sample}.json"
+    shell:
+        "mv {input.single} {output.single}"
+
+
+
+rule assembly_split_pe_files:
+    """
+    Split pe_pe files into _1 and _2.
+    """
+    input:
+        fastq_pe = NORM_DIR + "{sample}.final.pe_pe.fq.gz"
+    output:
+        left  = protected(NORM_DIR + "{sample}_1.fq.gz"),
+        right = protected(NORM_DIR + "{sample}_2.fq.gz")
+    threads:
+        1
+    params:
+        left  = "{sample}.final.pe_pe.fq.gz.1",
+        right = "{sample}.final.pe_pe.fq.gz.2"
+    log:
+        NORM_DIR + "split_pe_files_{sample}.log"
+    benchmark:
+        NORM_DIR + "split_pe_files_{sample}.json"
+    shell:
+        "split-paired-reads.py "
+            "{input.fastq_pe} "
+        "> {log} 2>&1 ; "
+        "pigz -9c {params.left}  > {output.left} ; "
+        "pigz -9c {params.right} > {output.right} ; "
+        "rm {params.left} {params.right}"
+
+
+
+rule diginorm_results:
+    input:
+        expand(
+            NORM_DIR + "{sample}_{end}.fq.gz",
+            sample = SAMPLES_PE,
+            end = ENDS
+        )
+
+
+
+rule diginorm_fastqc_sample_pair:
+    """
+    Do FASTQC reports
+    Uses --nogroup!
+    One thread per fastq.gz file
+    """
+    input:
+        fastq = NORM_DIR + "{sample}_{end}.fq.gz"
+    output:
+        zip   = protected(NORM_DIR + "{sample}_{end}_fastqc.zip"),
+        html  = protected(NORM_DIR + "{sample}_{end}_fastqc.html")
+    threads:
+        1
+    params:
+        outdir = NORM_DIR
+    log:
+        NORM_DIR + "fastqc_{sample}_{end}.log"
+    benchmark:
+        NORM_DIR + "fastqc_{sample}_{end}.json"
+    shell:
+        "fastqc "
+            "--nogroup "
+            "--outdir {params.outdir} "
+            "{input.fastq} "
+        "> {log} 2>&1"
+
+
+
+rule diginorm_multiqc:
+    input:
+        files_pe = expand(
+            NORM_DIR + "{sample}_{end}_fastqc.{extension}",
+            sample = SAMPLES_PE,
+            end = ENDS,
+            extension = "html zip".split()
+        )
+    output:
+        html= protected(NORM_DIR + "multiqc_report.html")
+    params:
+        folder = NORM_DIR
+    log:
+        NORM_DIR + "multiqc.log"
+    benchmark:
+        NORM_DIR + "multiqc.json"
+    shell:
+        "multiqc "
+            "--title Diginorm "
+            "--filename {output.html} "
+            "{params.folder} "
+        "2> {log}"
+
+
+
+rule diginorm_doc:
+    input:
+        html= NORM_DIR + "multiqc_report.html"
+
+
+
+rule diginorm:
+    '''diginorm_results + diginorm_doc'''
+    input:
+        files_pe = expand(
+            NORM_DIR + "{sample}_{end}.fq.gz",
+            sample = SAMPLES_PE,
+            end = ENDS
+        ),
+        html= NORM_DIR + "multiqc_report.html"
