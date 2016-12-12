@@ -1,14 +1,25 @@
-import os
-
-PWD = os.getcwd()
 ASSEMBLIES = ",".join(
-    [PWD + "/" + config["transcriptomes"][transcriptome]["path"] for transcriptome in config["transcriptomes"]]
+    sorted(
+        [config["transcriptomes"][transcriptome]["path"] for transcriptome in config["transcriptomes"]]
+    )
 )
 LEFTS = ",".join(
-    [PWD + "/" + config["samples_pe"][sample]["forward"] for sample in config["samples_pe"]]
+    sorted(
+        expand(
+            NORM_DIR + "{sample}_1.fq.gz",
+            sample = SAMPLES_PE,
+            end = ENDS
+        )
+    )
 )
 RIGHTS = ",".join(
-    [PWD + "/" + config["samples_pe"][sample]["reverse"] for sample in config["samples_pe"]]
+    sorted(
+        expand(
+            NORM_DIR + "{sample}_2.fq.gz",
+            sample = SAMPLES_PE,
+            end = ENDS
+        )
+    )
 )
 
 
