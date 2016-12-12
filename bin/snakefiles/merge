@@ -1,11 +1,14 @@
+import os
+
+PWD = os.getcwd()
 ASSEMBLIES = ",".join(
-    [config["transcriptomes"][transcriptome]["path"] for transcriptome in config["transcriptomes"]]
+    [PWD + "/" + config["transcriptomes"][transcriptome]["path"] for transcriptome in config["transcriptomes"]]
 )
 LEFTS = ",".join(
-    [config["samples_pe"][sample]["forward"] for sample in config["samples_pe"]]
+    [PWD + "/" + config["samples_pe"][sample]["forward"] for sample in config["samples_pe"]]
 )
 RIGHTS = ",".join(
-    [config["samples_pe"][sample]["reverse"] for sample in config["samples_pe"]]
+    [PWD + "/" + config["samples_pe"][sample]["reverse"] for sample in config["samples_pe"]]
 )
 
 
@@ -32,9 +35,9 @@ rule merge_write_command:
         "GROUP_ID=`id -g` ; "
         "echo "
         "\"transfuse "
-            "--assemblies `pwd`/{params.assemblies} "
-            "--left `pwd`/{params.lefts} "
-            "--right `pwd`/{params.rights} "
+            "--assemblies {params.assemblies} "
+            "--left {params.lefts} "
+            "--right {params.rights} "
             "--output `pwd`/{params.fasta} "
             "--threads {params.transfuse_threads} "
             "--verbose ; "

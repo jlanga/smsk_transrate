@@ -14,7 +14,7 @@ include: snakefiles + "clean"
 include: snakefiles + "raw"
 include: snakefiles + "qc"
 include: snakefiles + "diginorm"
-include: snakefiles + "transfuse"
+include: snakefiles + "merge"
 
 
 
