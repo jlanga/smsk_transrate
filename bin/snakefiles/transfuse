@@ -64,6 +64,10 @@ rule merge_run_command:
         fasta = protected(
             MERGE_DIR + "merged.fa"
         )
+    log:
+        MERGE_DIR + "run_command.log"
+    benchmark:
+        MERGE_DIR + "run_command.json"
     threads:
         24
     params:
@@ -77,3 +81,4 @@ rule merge_run_command:
             "--workdir `pwd` "
             "sglim2/transfuse-v0.5.0 "
             "bash {input.script} "
+        "> {log} 2>&1"
