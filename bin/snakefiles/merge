@@ -72,8 +72,16 @@ rule merge_run_command:
     input:
         script = MERGE_DIR + "run_transfuse.sh",
         assemblies = [config["transcriptomes"][transcriptome]["path"] for transcriptome in config["transcriptomes"]],
-        lefts = [config["samples_pe"][sample]["forward"] for sample in config["samples_pe"]],
-        rights =  [config["samples_pe"][sample]["reverse"] for sample in config["samples_pe"]]
+        lefts = expand(
+            NORM_DIR + "{sample}_1.fq.gz",
+            sample = SAMPLES_PE,
+            end = ENDS
+        ),
+        rights = expand(
+            NORM_DIR + "{sample}_2.fq.gz",
+            sample = SAMPLES_PE,
+            end = ENDS
+        )
     output:
         fasta = protected(
             MERGE_DIR + "merged.fa"
